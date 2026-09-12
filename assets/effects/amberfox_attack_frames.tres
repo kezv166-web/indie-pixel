@@ -1,0 +1,30 @@
+[gd_resource type="SpriteFrames" format=3 uid="uid://cobkm17gws62s"]
+
+[ext_resource type="Texture2D" path="res://assets/effects/amberfox_attack/frame_0.png" id="1_a0"]
+[ext_resource type="Texture2D" path="res://assets/effects/amberfox_attack/frame_1.png" id="2_a1"]
+[ext_resource type="Texture2D" path="res://assets/effects/amberfox_attack/frame_2.png" id="3_a2"]
+[ext_resource type="Texture2D" path="res://assets/effects/amberfox_attack/frame_3.png" id="4_a3"]
+[ext_resource type="Texture2D" path="res://assets/effects/amberfox_attack/frame_4.png" id="5_a4"]
+
+[resource]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("1_a0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("2_a1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("3_a2")
+}, {
+"duration": 1.0,
+"texture": ExtResource("4_a3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_a4")
+}],
+"loop": false,
+"name": &"amberfox_attack",
+"speed": 10.0
+}]

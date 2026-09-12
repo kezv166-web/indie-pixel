@@ -1,0 +1,42 @@
+[gd_resource type="SpriteFrames" format=3 uid="uid://gnnrr8cbgfs3"]
+
+[ext_resource type="Texture2D" path="res://assets/effects/aqufin_attack/frame_0.png" id="1_q0"]
+[ext_resource type="Texture2D" path="res://assets/effects/aqufin_attack/frame_1.png" id="2_q1"]
+[ext_resource type="Texture2D" path="res://assets/effects/aqufin_attack/frame_2.png" id="3_q2"]
+[ext_resource type="Texture2D" path="res://assets/effects/aqufin_attack/frame_3.png" id="4_q3"]
+[ext_resource type="Texture2D" path="res://assets/effects/aqufin_attack/frame_4.png" id="5_q4"]
+[ext_resource type="Texture2D" path="res://assets/effects/aqufin_attack/frame_5.png" id="6_q5"]
+[ext_resource type="Texture2D" path="res://assets/effects/aqufin_attack/frame_6.png" id="7_q6"]
+[ext_resource type="Texture2D" path="res://assets/effects/aqufin_attack/frame_7.png" id="8_q7"]
+
+[resource]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("1_q0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("2_q1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("3_q2")
+}, {
+"duration": 1.0,
+"texture": ExtResource("4_q3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_q4")
+}, {
+"duration": 1.0,
+"texture": ExtResource("6_q5")
+}, {
+"duration": 1.0,
+"texture": ExtResource("7_q6")
+}, {
+"duration": 1.0,
+"texture": ExtResource("8_q7")
+}],
+"loop": false,
+"name": &"aqufin_attack",
+"speed": 11.0
+}]
