@@ -14,6 +14,8 @@ extends CharacterBody2D
 @onready var camera: Camera2D = $Camera2D
 
 var facing_direction: Vector2 = Vector2.DOWN
+var _step_distance_accumulator: float = 0.0
+const STEP_DISTANCE_THRESHOLD: float = 16.0
 
 func _ready() -> void:
 	_setup_input_actions()
@@ -22,6 +24,13 @@ func _ready() -> void:
 		_set_idle_animation("down")
 	if camera and camera_zoom != Vector2.ZERO:
 		camera.zoom = camera_zoom
+	
+	# Restore position if returning from battle
+	if has_node("/root/GameState"):
+		var gs = get_node("/root/GameState")
+		if gs.player_return_position != Vector2.ZERO:
+			global_position = gs.player_return_position
+			gs.player_return_position = Vector2.ZERO
 
 func _physics_process(delta: float) -> void:
 	var input_direction: Vector2 = _get_input_direction()
@@ -36,9 +45,19 @@ func _physics_process(delta: float) -> void:
 			velocity = Vector2.ZERO
 		_update_idle_animation()
 	
+	var pos_before: Vector2 = global_position
 	move_and_slide()
 	global_position.x = clampf(global_position.x, 8.0, 1664.0)
 	global_position.y = clampf(global_position.y, 8.0, 933.0)
+	
+	# Calculate step distance traversed
+	var dist_moved: float = global_position.distance_to(pos_before)
+	if dist_moved > 0.0:
+		_step_distance_accumulator += dist_moved
+		while _step_distance_accumulator >= STEP_DISTANCE_THRESHOLD:
+			_step_distance_accumulator -= STEP_DISTANCE_THRESHOLD
+			if has_node("/root/EncounterManager"):
+				get_node("/root/EncounterManager").on_step_completed()
 
 func _get_input_direction() -> Vector2:
 	var input_dir: Vector2 = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")

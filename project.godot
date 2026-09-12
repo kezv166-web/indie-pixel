@@ -19,6 +19,11 @@ config/description="A GBA-style 2D Top-Down RPG set in Virbhadra City built with
 run/main_scene="res://scenes/world.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 
+[autoload]
+
+GameState="*res://scripts/game_state.gd"
+EncounterManager="*res://scripts/encounter_manager.gd"
+
 [display]
 
 window/size/viewport_width=320
