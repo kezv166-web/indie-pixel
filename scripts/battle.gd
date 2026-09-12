@@ -12,6 +12,7 @@ extends Node2D
 	$EnemySpawn4
 ]
 @onready var creature_sprite: Sprite2D = $CreatureSprite
+@onready var player_sprite: AnimatedSprite2D = $PlayerSprite
 @onready var info_label: Label = $CanvasLayer/InfoLabel
 
 const CREATURE_TEXTURES: Dictionary = {
@@ -22,6 +23,17 @@ const CREATURE_TEXTURES: Dictionary = {
 }
 
 func _ready() -> void:
+	if player_sprite:
+		player_sprite.flip_h = false
+		if player_sprite.sprite_frames and player_sprite.sprite_frames.has_animation("idle_right"):
+			player_sprite.play("idle_right")
+		elif player_sprite.sprite_frames and player_sprite.sprite_frames.has_animation("walk_right"):
+			player_sprite.animation = "walk_right"
+			player_sprite.stop()
+			player_sprite.frame = 0
+		if player_spawn:
+			player_sprite.global_position = player_spawn.global_position
+
 	var creature_name: String = ""
 	if has_node("/root/GameState"):
 		creature_name = get_node("/root/GameState").encounter_creature
