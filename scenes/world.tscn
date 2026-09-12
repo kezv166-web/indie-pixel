@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3 uid="uid://bworld001virb"]
+[gd_scene load_steps=12 format=3 uid="uid://bworld001virb"]
 
 [ext_resource type="Script" uid="uid://bf2r6kayigx2k" path="res://scripts/world.gd" id="1_world_script"]
 [ext_resource type="TileSet" uid="uid://btileset001virb" path="res://assets/tiles/SETILES.tres" id="2_tileset"]
@@ -6,6 +6,7 @@
 [ext_resource type="Texture2D" uid="uid://d2cwv8th7jocb" path="res://assets/map_reference/new_map.png" id="4_map_ref"]
 [ext_resource type="Script" path="res://scripts/tree_collisions.gd" id="5_tree_col_script"]
 [ext_resource type="Script" path="res://scripts/building_collisions.gd" id="6_building_col_script"]
+[ext_resource type="PackedScene" path="res://scenes/soldier.tscn" id="7_soldier_scene"]
 
 
 
@@ -62,6 +63,46 @@ y_sort_enabled = true
 position = Vector2(185, 150)
 z_index = 6
 y_sort_enabled = true
+
+[node name="Soldiers" type="Node2D" parent="."]
+z_index = 6
+y_sort_enabled = true
+
+[node name="Soldier_RoadPatrol" parent="Soldiers" instance=ExtResource("7_soldier_scene")]
+position = Vector2(290, 150)
+soldier_id = "soldier_west_road"
+assigned_creature = "Terron"
+patrol_points = Array[Vector2]([Vector2(230, 150), Vector2(350, 150)])
+move_speed = 38.0
+
+[node name="Soldier_PlazaPatrol" parent="Soldiers" instance=ExtResource("7_soldier_scene")]
+position = Vector2(700, 268)
+soldier_id = "soldier_plaza"
+assigned_creature = "Amberfox"
+patrol_points = Array[Vector2]([Vector2(640, 268), Vector2(760, 268)])
+move_speed = 40.0
+
+[node name="Soldier_GateGuard" parent="Soldiers" instance=ExtResource("7_soldier_scene")]
+position = Vector2(530, 170)
+soldier_id = "soldier_north_gate"
+assigned_creature = "Zephyrin"
+patrol_points = Array[Vector2]([Vector2(530, 140), Vector2(530, 200)])
+patrol_axis = Vector2(0, 1)
+move_speed = 35.0
+
+[node name="Soldier_WaterSentry" parent="Soldiers" instance=ExtResource("7_soldier_scene")]
+position = Vector2(300, 230)
+soldier_id = "soldier_water_sentry"
+assigned_creature = "AquFin"
+patrol_points = Array[Vector2]([Vector2(250, 230), Vector2(350, 230)])
+move_speed = 36.0
+
+[node name="Soldier_NexusCommander" parent="Soldiers" instance=ExtResource("7_soldier_scene")]
+position = Vector2(850, 200)
+soldier_id = "soldier_nexus_commander"
+assigned_creature = "Adaptive"
+patrol_points = Array[Vector2]([Vector2(820, 200), Vector2(880, 200)])
+move_speed = 34.0
 
 [node name="Overhead" type="TileMapLayer" parent="."]
 z_index = 10

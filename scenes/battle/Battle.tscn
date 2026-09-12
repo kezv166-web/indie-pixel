@@ -1,10 +1,27 @@
-[gd_scene load_steps=12 format=3 uid="uid://b8battle01234"]
+[gd_scene load_steps=14 format=3 uid="uid://b8battle01234"]
 
 [ext_resource type="Script" path="res://scripts/battle.gd" id="1_battle"]
 [ext_resource type="Texture2D" path="res://assets/Battle Ground.png" id="2_bground"]
 [ext_resource type="SpriteFrames" uid="uid://sle65yv5l0di" path="res://assets/characters/player/player_male_frames.tres" id="3_player_frames"]
 [ext_resource type="SpriteFrames" uid="uid://flameblastframes01" path="res://assets/effects/flame_blast_frames.tres" id="4_fb_frames"]
 [ext_resource type="PackedScene" uid="uid://dfws1nretgyaa" path="res://scenes/battle/health_bar.tscn" id="5_health_bar"]
+[ext_resource type="SpriteFrames" path="res://assets/soldier_frames.tres" id="6_soldier_frames"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_banner"]
+bg_color = Color(0.04, 0.12, 0.22, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.2, 0.75, 1, 0.9)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+content_margin_left = 4.0
+content_margin_top = 2.0
+content_margin_right = 4.0
+content_margin_bottom = 2.0
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_status"]
 bg_color = Color(0.0980392, 0.137255, 0.196078, 0.882353)
@@ -118,6 +135,13 @@ animation = &"walk_right"
 [node name="CreatureSprite" type="Sprite2D" parent="."]
 position = Vector2(246, 105)
 
+[node name="SoldierSprite" type="AnimatedSprite2D" parent="."]
+visible = false
+position = Vector2(246, 105)
+scale = Vector2(0.42, 0.42)
+sprite_frames = ExtResource("6_soldier_frames")
+animation = &"idle_left"
+
 [node name="AttackEffect" type="AnimatedSprite2D" parent="."]
 z_index = 2
 position = Vector2(246, 105)
@@ -160,6 +184,26 @@ color = Color(1, 0.88, 0.28, 1)
 
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="AdaptationBanner" type="PanelContainer" parent="CanvasLayer"]
+visible = false
+z_index = 15
+offset_left = 6.0
+offset_top = 2.0
+offset_right = 314.0
+offset_bottom = 15.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_banner")
+
+[node name="BannerLabel" type="Label" parent="CanvasLayer/AdaptationBanner"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.35, 0.92, 1, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.9)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 6
+text = "[NEXUS TACTICAL ADAPTATION: Soldier equipped with Water Power!]"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="EnemyStatusBox" type="PanelContainer" parent="CanvasLayer"]
 offset_left = 12.0

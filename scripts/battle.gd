@@ -1,7 +1,9 @@
 extends Node2D
 
 ## Battle Scene Controller
-## Handles authentic GBA-style turn-based combat, creature animations, health bars, and docked menus.
+## Handles authentic GBA-style turn-based combat, creature animations, health bars,
+## direct Soldier platform combat with 4 elemental powers, clean catch deflection,
+## telemetry tracking, and DQN tactical enemy adaptation.
 
 @onready var player_spawn: Marker2D = $PlayerSpawn
 @onready var enemy_spawns: Array[Marker2D] = [
@@ -11,11 +13,13 @@ extends Node2D
 	$EnemySpawn4
 ]
 @onready var creature_sprite: Sprite2D = $CreatureSprite
+@onready var soldier_sprite: AnimatedSprite2D = $SoldierSprite if has_node("SoldierSprite") else null
 @onready var player_sprite: AnimatedSprite2D = $PlayerSprite
 @onready var attack_effect: AnimatedSprite2D = $AttackEffect
 @onready var enemy_attack_effect: AnimatedSprite2D = $EnemyAttackEffect if has_node("EnemyAttackEffect") else $AttackEffect
 
 @onready var enemy_name_label: Label = $CanvasLayer/EnemyStatusBox/VBox/TopRow/EnemyNameLabel
+@onready var enemy_lv_label: Label = $CanvasLayer/EnemyStatusBox/VBox/TopRow/EnemyLvLabel if has_node("CanvasLayer/EnemyStatusBox/VBox/TopRow/EnemyLvLabel") else null
 @onready var enemy_health_bar: Control = $CanvasLayer/EnemyStatusBox/VBox/EnemyHealthBar
 @onready var enemy_hp_text: Label = $CanvasLayer/EnemyStatusBox/VBox/EnemyHPText
 
@@ -32,8 +36,54 @@ extends Node2D
 @onready var move1_button: Button = $CanvasLayer/MovesMenu/HBox/MoveGrid/Move1
 @onready var cancel_button: Button = $CanvasLayer/MovesMenu/HBox/CancelButton
 
+@onready var adaptation_banner: PanelContainer = $CanvasLayer/AdaptationBanner if has_node("CanvasLayer/AdaptationBanner") else null
+@onready var banner_label: Label = $CanvasLayer/AdaptationBanner/BannerLabel if has_node("CanvasLayer/AdaptationBanner/BannerLabel") else null
+
 @onready var catch_tube: Sprite2D = $CatchTube if has_node("CatchTube") else null
 @onready var catch_sparkles: CPUParticles2D = $CatchSparkles if has_node("CatchSparkles") else null
+
+const SOLDIER_ELEMENTAL_PROFILES: Dictionary = {
+	"Fire": {
+		"element": "Fire",
+		"creature": "Amberfox",
+		"title": "Soldier (Fire)",
+		"rank": "Ignis Guard Lv. 12",
+		"attack_move": "Flame Burst",
+		"damage": 12,
+		"resistance": "Fire",
+		"weakness": "Water"
+	},
+	"Water": {
+		"element": "Water",
+		"creature": "AquFin",
+		"title": "Soldier (Water)",
+		"rank": "Tide Sentry Lv. 12",
+		"attack_move": "Tidal Wave",
+		"damage": 10,
+		"resistance": "Fire",
+		"weakness": "Earth"
+	},
+	"Earth": {
+		"element": "Earth",
+		"creature": "Terron",
+		"title": "Soldier (Earth)",
+		"rank": "Terra Guard Lv. 12",
+		"attack_move": "Rock Crash",
+		"damage": 11,
+		"resistance": "Water",
+		"weakness": "Air"
+	},
+	"Air": {
+		"element": "Air",
+		"creature": "Zephyrin",
+		"title": "Soldier (Air)",
+		"rank": "Aero Scout Lv. 12",
+		"attack_move": "Cyclone Whirlwind",
+		"damage": 10,
+		"resistance": "Earth",
+		"weakness": "Fire"
+	}
+}
 
 const ENEMY_ATTACK_DATA: Dictionary = {
 	"Amberfox": {
@@ -48,6 +98,17 @@ const ENEMY_ATTACK_DATA: Dictionary = {
 		"duration": 0.55
 	},
 	"Aqufin": {
+		"frames_path": "res://assets/effects/aqufin_attack_frames.tres",
+		"dir_path": "res://assets/effects/aqufin_attack",
+		"frame_count": 8,
+		"fps": 11.0,
+		"anim": "aqufin_attack",
+		"scale": Vector2(0.42, 0.42),
+		"offset": Vector2(0, -4),
+		"flip_h": true,
+		"duration": 0.78
+	},
+	"AquFin": {
 		"frames_path": "res://assets/effects/aqufin_attack_frames.tres",
 		"dir_path": "res://assets/effects/aqufin_attack",
 		"frame_count": 8,
@@ -101,12 +162,7 @@ const TUBE_TEXTURES: Dictionary = {
 	"Fire": "res://assets/tubes/tube_fire.png",
 	"Water": "res://assets/tubes/tube_water.png",
 	"Earth": "res://assets/tubes/tube_earth.png",
-	"Air": "res://assets/tubes/tube_air.png",
-	"Red": "res://assets/tubes/tube_fire.png",
-	"Blue": "res://assets/tubes/tube_water.png",
-	"Brown": "res://assets/tubes/tube_earth.png",
-	"Orange": "res://assets/tubes/tube_earth.png",
-	"White": "res://assets/tubes/tube_air.png"
+	"Air": "res://assets/tubes/tube_air.png"
 }
 
 const CREATURE_ELEMENT_NAME: Dictionary = {
@@ -124,6 +180,14 @@ var _cached_tube_textures: Dictionary = {}
 var creature_orig_scale: Vector2 = Vector2(1, 1)
 var creature_orig_pos: Vector2 = Vector2(246, 105)
 
+var soldier_orig_pos: Vector2 = Vector2(246, 105)
+var soldier_orig_scale: Vector2 = Vector2(0.42, 0.42)
+
+var is_soldier_battle: bool = false
+var soldier_element: String = "Earth"
+var soldier_creature_power: String = "Terron"
+var current_soldier_profile: Dictionary = {}
+
 var enemy_name: String = "Aqufin"
 var enemy_hp: int = 42
 var enemy_max_hp: int = 42
@@ -139,14 +203,23 @@ var current_state: BattleState = BattleState.MENU
 
 func _ready() -> void:
 	_ensure_catch_nodes()
+	_ensure_soldier_sprite()
 
-	if has_node("/root/GameState"):
-		var gs = get_node("/root/GameState")
+	var gs = get_node_or_null("/root/GameState")
+	if gs:
+		if "soldier_battle_active" in gs and gs.soldier_battle_active:
+			is_soldier_battle = true
+			gs.soldier_battle_active = false
 		if gs.encounter_creature != "":
 			enemy_name = gs.encounter_creature
+		if gs.telemetry:
+			gs.telemetry.record_battle_start()
+			gs.telemetry.record_hp(player_hp, player_max_hp)
 
-	if enemy_name_label:
-		enemy_name_label.text = enemy_name
+	if is_soldier_battle:
+		_setup_soldier_battle_opponent(gs)
+	else:
+		_setup_wild_creature_opponent()
 
 	if enemy_health_bar:
 		enemy_health_bar.setup(enemy_hp, enemy_max_hp)
@@ -154,7 +227,6 @@ func _ready() -> void:
 		player_health_bar.setup(player_hp, player_max_hp)
 
 	update_hp_labels()
-	spawn_creature(enemy_name)
 
 	if player_sprite:
 		player_sprite.flip_h = false
@@ -175,7 +247,8 @@ func _ready() -> void:
 	
 	if enemy_attack_effect:
 		enemy_attack_effect.visible = false
-		var e_frames = _get_or_create_enemy_frames(enemy_name)
+		var lookup_c = soldier_creature_power if is_soldier_battle else enemy_name
+		var e_frames = _get_or_create_enemy_frames(lookup_c)
 		if e_frames:
 			enemy_attack_effect.sprite_frames = e_frames
 
@@ -187,7 +260,114 @@ func _ready() -> void:
 		run_button.focus_neighbor_top = catch_button.get_path()
 		run_button.focus_neighbor_bottom = fight_button.get_path()
 
-	show_main_menu("A wild " + enemy_name + " appeared!\nWhat will Player do?")
+	var intro_msg: String = ""
+	if is_soldier_battle:
+		intro_msg = "Soldier challenged you to battle!\nSoldier channels %s power (%s)!" % [
+			current_soldier_profile.get("element", "Earth"),
+			current_soldier_profile.get("creature", "Terron")
+		]
+	else:
+		intro_msg = "A wild " + enemy_name + " appeared!\nWhat will Player do?"
+
+	show_main_menu(intro_msg)
+
+func _setup_soldier_battle_opponent(gs: Node) -> void:
+	# 1. Hide wild creature sprite
+	if creature_sprite:
+		creature_sprite.visible = false
+
+	# 2. Determine elemental profile using DQN tactical adaptation and soldier assignment
+	var adaptation: Dictionary = {}
+	if gs and gs.has_method("get_next_adaptation"):
+		adaptation = gs.get_next_adaptation()
+
+	var assigned: String = ""
+	if gs and "soldier_assigned_element" in gs:
+		assigned = gs.soldier_assigned_element
+
+	# If overworld soldier has a dedicated assigned power (Fire, Water, Earth, Air), respect it!
+	# If soldier is adaptive or unassigned, the in-engine DQN forward-pass runner selects the counter!
+	if assigned != "" and assigned != "Adaptive" and SOLDIER_ELEMENTAL_PROFILES.has(assigned):
+		soldier_element = assigned
+		var banner_msg = "[NEXUS TACTICAL ADAPTATION: Soldier equipped with %s Power!]" % soldier_element
+		var recommended = adaptation.get("element", "")
+		if recommended != "" and recommended != soldier_element:
+			banner_msg = "[NEXUS TACTICAL ADAPTATION: Soldier deployed with %s Power! (Nexus Counter: %s)]" % [soldier_element, recommended]
+		adaptation["banner_text"] = banner_msg
+	elif adaptation.has("element"):
+		# DQN forward-pass selects the optimal enemy elemental counter
+		soldier_element = adaptation.get("element", "Water")
+	else:
+		soldier_element = _creature_to_element(enemy_name)
+
+	current_soldier_profile = SOLDIER_ELEMENTAL_PROFILES.get(soldier_element, SOLDIER_ELEMENTAL_PROFILES["Earth"]).duplicate()
+	soldier_creature_power = current_soldier_profile.get("creature", "Terron")
+
+	# 3. Position and display Soldier directly on fighting ground platform (246, 105)
+	if soldier_sprite:
+		soldier_sprite.visible = true
+		soldier_sprite.global_position = Vector2(246, 105)
+		soldier_sprite.scale = soldier_orig_scale
+		soldier_orig_pos = soldier_sprite.global_position
+		_set_soldier_left_facing()
+
+	# 4. Update status box to soldier title & rank
+	if enemy_name_label:
+		enemy_name_label.text = current_soldier_profile.get("title", "Soldier (Guard)")
+	if enemy_lv_label:
+		enemy_lv_label.text = current_soldier_profile.get("rank", "Lv. 12")
+
+	# 5. Display DQN Tactical Adaptation Banner
+	_show_tactical_banner(adaptation)
+
+func _setup_wild_creature_opponent() -> void:
+	if soldier_sprite:
+		soldier_sprite.visible = false
+	if adaptation_banner:
+		adaptation_banner.visible = false
+
+	spawn_creature(enemy_name)
+
+	if enemy_name_label:
+		enemy_name_label.text = enemy_name
+	if enemy_lv_label:
+		enemy_lv_label.text = "Lv. 12"
+
+func _set_soldier_left_facing() -> void:
+	if not soldier_sprite:
+		return
+	if soldier_sprite.sprite_frames:
+		if soldier_sprite.sprite_frames.has_animation("idle_left"):
+			soldier_sprite.play("idle_left")
+		elif soldier_sprite.sprite_frames.has_animation("walk_left"):
+			soldier_sprite.animation = "walk_left"
+			soldier_sprite.stop()
+			soldier_sprite.frame = 0
+		else:
+			soldier_sprite.flip_h = false
+
+func _show_tactical_banner(adaptation: Dictionary) -> void:
+	if not adaptation_banner or not banner_label:
+		return
+
+	var text_msg = adaptation.get("banner_text", "")
+	if text_msg == "":
+		text_msg = "[NEXUS TACTICAL ADAPTATION: Soldier equipped with %s Power!]" % current_soldier_profile.get("element", "Earth")
+	
+	banner_label.text = text_msg
+	adaptation_banner.visible = true
+	adaptation_banner.modulate.a = 0.0
+	adaptation_banner.position.y = -18.0
+
+	var tween = create_tween()
+	tween.tween_property(adaptation_banner, "modulate:a", 1.0, 0.35)
+	tween.parallel().tween_property(adaptation_banner, "position:y", 2.0, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+func _creature_to_element(c_name: String) -> String:
+	for k in CREATURE_ELEMENT_NAME.keys():
+		if k.to_lower() == c_name.to_lower():
+			return CREATURE_ELEMENT_NAME[k]
+	return "Earth"
 
 func spawn_creature(c_name: String) -> void:
 	var tex_path: String = ""
@@ -211,6 +391,7 @@ func spawn_creature(c_name: String) -> void:
 	
 	if tex and creature_sprite:
 		creature_sprite.texture = tex
+		creature_sprite.visible = true
 		if enemy_spawns.size() > 0:
 			var chosen = enemy_spawns.pick_random()
 			creature_sprite.global_position = chosen.global_position
@@ -220,7 +401,6 @@ func spawn_creature(c_name: String) -> void:
 			creature_sprite.scale = Vector2(target_scale, target_scale)
 		creature_orig_pos = creature_sprite.global_position
 		creature_orig_scale = creature_sprite.scale
-
 
 func update_hp_labels() -> void:
 	if enemy_hp_text:
@@ -279,6 +459,11 @@ func _on_run_button_pressed() -> void:
 		dialogue_label.visible = true
 		dialogue_label.offset_right = 304.0
 		dialogue_label.text = "Got away safely!"
+
+	var gs = get_node_or_null("/root/GameState")
+	if gs and gs.telemetry:
+		gs.telemetry.record_run()
+
 	if player_sprite:
 		player_sprite.flip_h = true
 		var run_tween = create_tween()
@@ -308,8 +493,8 @@ func _on_move_1_pressed() -> void:
 		_show_no_pp_message("Flame Blast")
 		return
 	flame_blast_pp -= 1
-	var nerfed_damage: int = randi_range(12, 14)
-	execute_attack("Flame Blast", nerfed_damage)
+	var base_damage: int = randi_range(12, 14)
+	execute_attack("Flame Blast", base_damage)
 
 func execute_attack(move_name: String, damage: int) -> void:
 	current_state = BattleState.BUSY
@@ -318,6 +503,8 @@ func execute_attack(move_name: String, damage: int) -> void:
 	if action_menu:
 		action_menu.visible = false
 	
+	var gs = get_node_or_null("/root/GameState")
+
 	if dialogue_label:
 		dialogue_label.visible = true
 		dialogue_label.offset_right = 304.0
@@ -332,13 +519,17 @@ func execute_attack(move_name: String, damage: int) -> void:
 
 	await get_tree().create_timer(0.3).timeout
 
-	# Play attack animation directly over target creature
-	if attack_effect and creature_sprite:
+	# Identify active target node (soldier or creature)
+	var target_node: Node2D = soldier_sprite if (is_soldier_battle and soldier_sprite) else creature_sprite
+	var target_pos: Vector2 = target_node.global_position if target_node else Vector2(246, 105)
+
+	# Play attack animation directly over target
+	if attack_effect:
 		var fb_frames = _get_or_create_player_attack_frames()
 		if fb_frames:
 			attack_effect.sprite_frames = fb_frames
 		attack_effect.flip_h = false
-		attack_effect.global_position = creature_sprite.global_position
+		attack_effect.global_position = target_pos
 		attack_effect.scale = Vector2(0.42, 0.42)
 		attack_effect.frame = 0
 		attack_effect.visible = true
@@ -348,31 +539,71 @@ func execute_attack(move_name: String, damage: int) -> void:
 		attack_effect.visible = false
 		attack_effect.stop()
 	
-	# Enemy creature hit flash and shake
-	if creature_sprite:
+	# Target hit flash and shake
+	if target_node:
 		var flash_tween = create_tween()
-		var o_pos = creature_sprite.position
-		flash_tween.tween_property(creature_sprite, "modulate", Color(2.2, 0.4, 0.4, 1), 0.1)
-		flash_tween.tween_property(creature_sprite, "modulate", Color(1, 1, 1, 1), 0.1)
+		var o_pos = target_node.position
+		flash_tween.tween_property(target_node, "modulate", Color(2.2, 0.4, 0.4, 1), 0.1)
+		flash_tween.tween_property(target_node, "modulate", Color(1, 1, 1, 1), 0.1)
 		var shake = create_tween()
-		shake.tween_property(creature_sprite, "position:x", o_pos.x + 5, 0.05)
-		shake.tween_property(creature_sprite, "position:x", o_pos.x - 5, 0.05)
-		shake.tween_property(creature_sprite, "position:x", o_pos.x, 0.05)
+		shake.tween_property(target_node, "position:x", o_pos.x + 5, 0.05)
+		shake.tween_property(target_node, "position:x", o_pos.x - 5, 0.05)
+		shake.tween_property(target_node, "position:x", o_pos.x, 0.05)
 
-	# Apply damage and update health bar with color transitions
-	enemy_hp = max(0, enemy_hp - damage)
+	# Elemental interaction against soldier
+	var final_damage = damage
+	var effect_msg = ""
+	if is_soldier_battle:
+		if soldier_element == "Water":
+			final_damage = max(5, int(damage * 0.65)) # Water dampens Fire!
+			effect_msg = "\nIt's not very effective against Water armor!"
+		elif soldier_element == "Fire":
+			final_damage = max(6, int(damage * 0.75)) # Fire resists Fire!
+			effect_msg = "\nIt's not very effective against Fire armor!"
+		elif soldier_element == "Earth":
+			final_damage = int(damage * 1.1)
+		elif soldier_element == "Air":
+			final_damage = int(damage * 1.25)
+			effect_msg = "\nIt's super effective against Air!"
+
+	# Telemetry record
+	if gs and gs.telemetry:
+		gs.telemetry.record_move(move_name, final_damage)
+		gs.telemetry.record_turn()
+
+	enemy_hp = max(0, enemy_hp - final_damage)
 	update_hp_labels()
+
+	if effect_msg != "" and dialogue_label:
+		dialogue_label.text += effect_msg
 
 	await get_tree().create_timer(0.7).timeout
 	
 	if enemy_hp <= 0:
 		# Victory flow
-		if dialogue_label:
-			dialogue_label.text = "Wild " + enemy_name + " fainted!\nPlayer won the battle!"
-		if creature_sprite:
-			var faint_tween = create_tween()
-			faint_tween.tween_property(creature_sprite, "modulate:a", 0.0, 0.8)
-			faint_tween.parallel().tween_property(creature_sprite, "position:y", creature_sprite.position.y + 20.0, 0.8)
+		if is_soldier_battle:
+			if dialogue_label:
+				dialogue_label.text = "Soldier was defeated!\nPlayer won the battle!"
+			if soldier_sprite:
+				var faint_tween = create_tween()
+				faint_tween.tween_property(soldier_sprite, "modulate:a", 0.0, 0.8)
+				faint_tween.parallel().tween_property(soldier_sprite, "position:y", soldier_sprite.position.y + 16.0, 0.8)
+			if gs:
+				if "last_battled_soldier" in gs and gs.last_battled_soldier != "":
+					if not gs.defeated_soldiers.has(gs.last_battled_soldier):
+						gs.defeated_soldiers.append(gs.last_battled_soldier)
+				if gs.telemetry:
+					gs.telemetry.record_battle_end(true)
+		else:
+			if dialogue_label:
+				dialogue_label.text = "Enemy " + enemy_name + " fainted!\nPlayer won the battle!"
+			if creature_sprite:
+				var faint_tween = create_tween()
+				faint_tween.tween_property(creature_sprite, "modulate:a", 0.0, 0.8)
+				faint_tween.parallel().tween_property(creature_sprite, "position:y", creature_sprite.position.y + 20.0, 0.8)
+			if gs and gs.telemetry:
+				gs.telemetry.record_battle_end(true)
+
 		await get_tree().create_timer(1.8).timeout
 		return_to_world()
 		return
@@ -381,21 +612,47 @@ func execute_attack(move_name: String, damage: int) -> void:
 	await execute_enemy_turn()
 
 func execute_enemy_turn() -> void:
-	if dialogue_label:
-		dialogue_label.text = "Wild " + enemy_name + " attacks!"
-	await get_tree().create_timer(0.6).timeout
+	if is_soldier_battle:
+		var profile = current_soldier_profile
+		var elem = profile.get("element", "Earth")
+		var creature = profile.get("creature", "Terron")
+		var move_name = profile.get("attack_move", "Rock Crash")
+		var enemy_damage = profile.get("damage", 10)
 
-	if creature_sprite:
-		var enemy_lunge = create_tween()
-		var o_x = creature_sprite.position.x
-		enemy_lunge.tween_property(creature_sprite, "position:x", o_x - 14.0, 0.12)
-		enemy_lunge.tween_property(creature_sprite, "position:x", o_x, 0.12)
+		if dialogue_label:
+			dialogue_label.text = "Soldier unleashes %s %s!" % [creature, move_name]
+		await get_tree().create_timer(0.6).timeout
 
-	await get_tree().create_timer(0.15).timeout
+		# Soldier lunges forward
+		if soldier_sprite:
+			var soldier_lunge = create_tween()
+			var o_x = soldier_sprite.position.x
+			soldier_lunge.tween_property(soldier_sprite, "position:x", o_x - 14.0, 0.12)
+			soldier_lunge.tween_property(soldier_sprite, "position:x", o_x, 0.12)
 
-	# Play creature's attack animation directly on the player
-	await play_enemy_attack_animation(enemy_name)
+		await get_tree().create_timer(0.15).timeout
 
+		# Play creature attack animation on player
+		await play_enemy_attack_animation(creature)
+
+		_apply_damage_to_player(enemy_damage)
+	else:
+		if dialogue_label:
+			dialogue_label.text = "Wild " + enemy_name + " attacks!"
+		await get_tree().create_timer(0.6).timeout
+
+		if creature_sprite:
+			var enemy_lunge = create_tween()
+			var o_x = creature_sprite.position.x
+			enemy_lunge.tween_property(creature_sprite, "position:x", o_x - 14.0, 0.12)
+			enemy_lunge.tween_property(creature_sprite, "position:x", o_x, 0.12)
+
+		await get_tree().create_timer(0.15).timeout
+
+		await play_enemy_attack_animation(enemy_name)
+		_apply_damage_to_player(10)
+
+func _apply_damage_to_player(enemy_damage: int) -> void:
 	if player_sprite:
 		var player_flash = create_tween()
 		player_flash.tween_property(player_sprite, "modulate", Color(2.2, 0.4, 0.4, 1), 0.1)
@@ -406,9 +663,13 @@ func execute_enemy_turn() -> void:
 		player_shake.tween_property(player_sprite, "position:x", p_x + 4, 0.05)
 		player_shake.tween_property(player_sprite, "position:x", p_x, 0.05)
 
-	var enemy_damage = 10
 	player_hp = max(0, player_hp - enemy_damage)
 	update_hp_labels()
+
+	var gs = get_node_or_null("/root/GameState")
+	if gs and gs.telemetry:
+		gs.telemetry.record_hp(player_hp, player_max_hp)
+
 	if dialogue_label:
 		dialogue_label.text = "Player took " + str(enemy_damage) + " damage!"
 
@@ -420,6 +681,8 @@ func execute_enemy_turn() -> void:
 		if player_sprite:
 			var player_faint = create_tween()
 			player_faint.tween_property(player_sprite, "modulate:a", 0.0, 0.8)
+		if gs and gs.telemetry:
+			gs.telemetry.record_battle_end(false)
 		await get_tree().create_timer(1.8).timeout
 		return_to_world()
 		return
@@ -456,8 +719,8 @@ func execute_catch() -> void:
 	var tube_target_scale = Vector2(tube_scale_factor, tube_scale_factor)
 
 	var start_pos = player_sprite.global_position if player_sprite else Vector2(83, 145)
-	var target_pos = creature_orig_pos
-	if creature_sprite and creature_sprite.visible:
+	var target_pos = soldier_sprite.global_position if (is_soldier_battle and soldier_sprite) else creature_orig_pos
+	if not is_soldier_battle and creature_sprite and creature_sprite.visible:
 		target_pos = creature_sprite.global_position
 	var landing_pos = Vector2(target_pos.x, 122.0)
 
@@ -468,7 +731,7 @@ func execute_catch() -> void:
 		catch_tube.modulate = Color(1, 1, 1, 1)
 		catch_tube.visible = true
 
-	# 1. Throw arc towards target creature
+	# 1. Throw arc towards target
 	var throw_duration: float = 0.52
 	var throw_tween = create_tween()
 	throw_tween.tween_property(catch_tube, "position:x", target_pos.x, throw_duration).set_trans(Tween.TRANS_LINEAR)
@@ -485,7 +748,41 @@ func execute_catch() -> void:
 	if catch_tube:
 		catch_tube.rotation = 0.0
 
-	# 2. Creature absorbs / transforms into energy and enters the tube
+	# --- REQUIREMENT 3: IF SOLDIER BATTLE, CLEAN DEFLECTION ---
+	if is_soldier_battle:
+		var gs = get_node_or_null("/root/GameState")
+		if gs and gs.telemetry:
+			gs.telemetry.record_catch("Soldier", false)
+			gs.telemetry.record_turn()
+
+		# Deflection sparks
+		if catch_sparkles:
+			catch_sparkles.global_position = target_pos
+			catch_sparkles.restart()
+			catch_sparkles.emitting = true
+
+		# Tube bounces harmlessly off the soldier
+		if catch_tube:
+			var deflect_tween = create_tween()
+			deflect_tween.tween_property(catch_tube, "position:x", target_pos.x - 28.0, 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			deflect_tween.parallel().tween_property(catch_tube, "position:y", target_pos.y + 32.0, 0.22).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+			deflect_tween.parallel().tween_property(catch_tube, "modulate:a", 0.0, 0.3)
+			await deflect_tween.finished
+			catch_tube.visible = false
+			catch_tube.modulate = Color(1, 1, 1, 1)
+
+		if dialogue_label:
+			dialogue_label.text = "You can't catch a human soldier!\nThe soldier deflects the Catch-Tube!"
+		await get_tree().create_timer(1.6).timeout
+
+		if dialogue_label:
+			dialogue_label.text = "Soldier retaliates against the tube attack!"
+		await get_tree().create_timer(0.8).timeout
+
+		await execute_enemy_turn()
+		return
+
+	# --- WILD CREATURE CATCH SEQUENCE ---
 	if dialogue_label:
 		dialogue_label.text = "The wild " + enemy_name + " is being absorbed!"
 
@@ -501,28 +798,23 @@ func execute_catch() -> void:
 		await absorb_tween.finished
 		creature_sprite.visible = false
 
-	# 3. Tube drops to platform oval and settles with a bounce
 	if catch_tube:
 		var drop_tween = create_tween()
 		drop_tween.tween_property(catch_tube, "position:y", landing_pos.y, 0.16).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 		await drop_tween.finished
 	await get_tree().create_timer(0.28).timeout
 
-	# 4. Catch calculation scaling inversely with remaining HP
 	var hp_ratio: float = float(enemy_hp) / float(enemy_max_hp)
 	var catch_chance: float = 0.0
 	var fail_shakes: int = 1
 
 	if hp_ratio > 0.75:
-		# High HP (Green, > 75%): very low catch rate (~10%)
 		catch_chance = 0.10
 		fail_shakes = 1
 	elif hp_ratio > 0.25:
-		# Medium HP (Yellow, 26%-75%): moderate catch rate (~45%-65%)
 		catch_chance = 0.45 + (0.75 - hp_ratio) * 0.40
 		fail_shakes = 2 if randf() < 0.60 else 1
 	else:
-		# Critical low HP (Red, 1%-25%): high catch rate (~85%-95%)
 		catch_chance = 0.85 + (0.25 - hp_ratio) * 0.45
 		fail_shakes = 3 if randf() < 0.70 else 2
 
@@ -530,7 +822,6 @@ func execute_catch() -> void:
 	var is_success: bool = (roll < catch_chance)
 	var total_shakes: int = 3 if is_success else fail_shakes
 
-	# 5. GBA-style wobble shakes (1 to 3 shakes)
 	for s in range(1, total_shakes + 1):
 		if dialogue_label:
 			dialogue_label.text = "..."
@@ -543,21 +834,19 @@ func execute_catch() -> void:
 			await wobble_tween.finished
 		await get_tree().create_timer(0.35).timeout
 
+	var gs_wild = get_node_or_null("/root/GameState")
+
 	if is_success:
-		# CATCH SUCCESS SEQUENCE
-		# Click and lock animation
 		if catch_tube:
 			var click_tween = create_tween()
 			click_tween.tween_property(catch_tube, "scale", tube_target_scale * Vector2(1.25, 0.75), 0.08)
 			click_tween.tween_property(catch_tube, "scale", tube_target_scale, 0.08)
 			await click_tween.finished
 
-			# Turn to creature's elemental color tube
 			var elem_tex = _get_tube_texture(enemy_name)
 			if elem_tex:
 				catch_tube.texture = elem_tex
 
-			# Sparkling star burst & brightness pulse
 			if catch_sparkles:
 				catch_sparkles.global_position = catch_tube.global_position
 				catch_sparkles.restart()
@@ -577,19 +866,16 @@ func execute_catch() -> void:
 		if dialogue_label:
 			dialogue_label.text = "Gotcha! Wild %s was caught in the %s Tube!" % [enemy_name, elem_name]
 
-		# Save to GameState
-		if has_node("/root/GameState"):
-			var gs = get_node("/root/GameState")
-			if gs.has_method("add_caught_creature"):
-				gs.add_caught_creature(enemy_name, elem_name, enemy_hp, enemy_max_hp)
-			elif gs.get("caught_creatures") != null:
-				gs.caught_creatures.append({"name": enemy_name, "tube": elem_name, "hp": enemy_hp, "max_hp": enemy_max_hp})
+		if gs_wild:
+			if gs_wild.has_method("add_caught_creature"):
+				gs_wild.add_caught_creature(enemy_name, elem_name, enemy_hp, enemy_max_hp)
+			if gs_wild.telemetry:
+				gs_wild.telemetry.record_catch(enemy_name, true)
+				gs_wild.telemetry.record_battle_end(true)
 
 		await get_tree().create_timer(2.2).timeout
 		return_to_world()
 	else:
-		# BREAKOUT SEQUENCE
-		# Tube pops open and bursts away
 		if catch_tube:
 			var pop_tween = create_tween()
 			pop_tween.tween_property(catch_tube, "scale", tube_target_scale * 1.5, 0.09)
@@ -598,7 +884,6 @@ func execute_catch() -> void:
 			await pop_tween.finished
 			catch_tube.visible = false
 
-		# Creature bursts out from the tube landing position back to its stance
 		if creature_sprite:
 			creature_sprite.global_position = landing_pos
 			creature_sprite.scale = Vector2(0.05, 0.05)
@@ -610,11 +895,14 @@ func execute_catch() -> void:
 			respawn_tween.parallel().tween_property(creature_sprite, "modulate", Color(1, 1, 1, 1), 0.25)
 			await respawn_tween.finished
 
+		if gs_wild and gs_wild.telemetry:
+			gs_wild.telemetry.record_catch(enemy_name, false)
+			gs_wild.telemetry.record_turn()
+
 		if dialogue_label:
 			dialogue_label.text = "Oh no! The wild " + enemy_name + " broke free!"
 		await get_tree().create_timer(0.9).timeout
 
-		# Wild creature retaliates
 		await execute_enemy_turn()
 
 func _ensure_catch_nodes() -> void:
@@ -648,6 +936,33 @@ func _ensure_catch_nodes() -> void:
 			catch_sparkles.scale_amount_max = 3.5
 			catch_sparkles.color = Color(1, 0.88, 0.28, 1)
 			add_child(catch_sparkles)
+
+func _ensure_soldier_sprite() -> void:
+	if soldier_sprite == null:
+		if has_node("SoldierSprite"):
+			soldier_sprite = $SoldierSprite
+		else:
+			soldier_sprite = AnimatedSprite2D.new()
+			soldier_sprite.name = "SoldierSprite"
+			soldier_sprite.position = Vector2(246, 105)
+			soldier_sprite.scale = Vector2(0.42, 0.42)
+			soldier_sprite.visible = false
+			add_child(soldier_sprite)
+
+	if soldier_sprite.sprite_frames == null:
+		var paths = [
+			"res://assets/soldier_frames.tres",
+			"res://assets/characters/soldier/soldier_frames.tres"
+		]
+		for p in paths:
+			if ResourceLoader.exists(p):
+				soldier_sprite.sprite_frames = load(p)
+				break
+
+	if adaptation_banner == null and has_node("CanvasLayer/AdaptationBanner"):
+		adaptation_banner = $CanvasLayer/AdaptationBanner
+	if banner_label == null and has_node("CanvasLayer/AdaptationBanner/BannerLabel"):
+		banner_label = $CanvasLayer/AdaptationBanner/BannerLabel
 
 func _get_tube_texture(tube_key: String) -> Texture2D:
 	if _cached_tube_textures.has(tube_key):
@@ -683,15 +998,15 @@ func _get_tube_texture(tube_key: String) -> Texture2D:
 	if master_img == null or master_img.is_empty():
 		master_img = Image.load_from_file("res://assets/catch-tubes.png")
 	if master_img and not master_img.is_empty():
-		var rect := Rect2i(1453, 229, 213, 468) # default empty
+		var rect := Rect2i(1453, 229, 213, 468)
 		var lk = tube_key.to_lower()
-		if "water" in lk or "aqufin" in lk or "blue" in lk:
+		if "water" in lk or "aqufin" in lk:
 			rect = Rect2i(91, 229, 211, 468)
-		elif "earth" in lk or "terron" in lk or "brown" in lk or "orange" in lk:
+		elif "earth" in lk or "terron" in lk:
 			rect = Rect2i(424, 229, 210, 468)
-		elif "fire" in lk or "amberfox" in lk or "red" in lk:
+		elif "fire" in lk or "amberfox" in lk:
 			rect = Rect2i(777, 229, 211, 468)
-		elif "air" in lk or "zephyrin" in lk or "white" in lk:
+		elif "air" in lk or "zephyrin" in lk:
 			rect = Rect2i(1119, 229, 211, 468)
 		elif "empty" in lk or "clear" in lk:
 			rect = Rect2i(1453, 229, 213, 468)
@@ -703,7 +1018,6 @@ func _get_tube_texture(tube_key: String) -> Texture2D:
 			return tex
 
 	return null
-
 
 func play_enemy_attack_animation(c_name: String) -> void:
 	var lookup_name = c_name
@@ -780,7 +1094,6 @@ func _get_or_create_enemy_frames(c_name: String) -> SpriteFrames:
 	var anim_name: String = data["anim"]
 	var frames_path: String = data["frames_path"]
 	
-	# Attempt 1: Try loading pre-built .tres resource
 	if ResourceLoader.exists(frames_path):
 		var res = load(frames_path) as SpriteFrames
 		if res and res.has_animation(anim_name) and res.get_frame_count(anim_name) > 0:
@@ -790,8 +1103,6 @@ func _get_or_create_enemy_frames(c_name: String) -> SpriteFrames:
 				print("[Battle] Loaded attack frames for %s from resource (%d frames)" % [lookup_name, res.get_frame_count(anim_name)])
 				return res
 	
-	# Attempt 2: Build SpriteFrames dynamically from PNGs using Image.load_from_file
-	# This guarantees textures are loaded in any runtime environment even without Godot's .import cache
 	var sf = SpriteFrames.new()
 	sf.add_animation(anim_name)
 	var fps: float = data.get("fps", 10.0)
@@ -820,8 +1131,6 @@ func _get_or_create_enemy_frames(c_name: String) -> SpriteFrames:
 		if img != null and not img.is_empty():
 			var tex = ImageTexture.create_from_image(img)
 			sf.add_frame(anim_name, tex)
-		else:
-			push_warning("[Battle] Could not load attack frame: %s" % res_path)
 	
 	if sf.get_frame_count(anim_name) > 0:
 		_cached_enemy_frames[lookup_name] = sf

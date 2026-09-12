@@ -50,6 +50,15 @@ func _physics_process(delta: float) -> void:
 	global_position.x = clampf(global_position.x, 8.0, 1664.0)
 	global_position.y = clampf(global_position.y, 8.0, 933.0)
 	
+	# Check physical collisions with NPCs / Soldiers
+	var slide_count: int = get_slide_collision_count()
+	for i in range(slide_count):
+		var col = get_slide_collision(i)
+		var collider = col.get_collider()
+		if collider and collider.has_method("on_player_touched"):
+			collider.on_player_touched(self)
+			break
+	
 	# Calculate step distance traversed
 	var dist_moved: float = global_position.distance_to(pos_before)
 	if dist_moved > 0.0:
