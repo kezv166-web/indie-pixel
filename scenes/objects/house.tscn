@@ -1,0 +1,20 @@
+[gd_scene load_steps=3 format=3 uid="uid://bhouse001virb"]
+
+[ext_resource type="Texture2D" uid="uid://bsetiles001virb" path="res://assets/tiles/SETILES.png" id="1_tileset"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_house"]
+size = Vector2(44, 20)
+
+[node name="House" type="StaticBody2D"]
+collision_layer = 4
+collision_mask = 2
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture = ExtResource("1_tileset")
+region_enabled = true
+region_rect = Rect2(768, 384, 48, 48)
+offset = Vector2(0, -24)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, -10)
+shape = SubResource("RectangleShape2D_house")
