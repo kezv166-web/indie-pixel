@@ -2,8 +2,8 @@
 
 <p align="center">
 
-<strong>{=html}REAL WORLD × AI × GAMING</strong>{=html}<br>{=html}
-<em>{=html}Turn the Real World into a Game.</em>{=html}
+<strong>REAL WORLD × AI × GAMING</strong><br>
+<em>Turn the Real World into a Game.</em>
 
 </p>
 
