@@ -516,7 +516,7 @@ GPS/camera/live-data integration
 Features marked as planned are part of the roadmap and should not be
 considered fully implemented in the current prototype.
 
-👥 TEAM
+👥 TEAM  ALcadex
 
 Project: indie-pixel
 Repository: indie-pixel
