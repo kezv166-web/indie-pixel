@@ -541,7 +541,9 @@ Uncover your identity.
 
 EXPLORE. ABSORB. ADAPT. BECOME.
 
-ppt link- https://canva.link/7pgewp951qsm3k2
+ppt link- https://drive.google.com/drive/folders/1LG-RjHrHt8dQ2Pr7_dJY-faksAPzOX3Y?usp=sharing
+
+
 some assets - https://drive.google.com/drive/folders/1AgKIHAVrEgdmslaH_QdlR8u6PA8Hv3ih
 
 📜 License
